@@ -286,6 +286,91 @@ percentOutOf100 = ::Clamp(percentOutOf100, 0u, 100u);
 
 **PR Candidate:** Name collision issue.
 
+### Memory protection constants not declared (PAGE_READONLY/PAGE_READWRITE)
+
+**Symptom:** `'PAGE_READWRITE' was not declared in this scope` in Memmap.cpp, FileSystemProxy.cpp, SDIOSlot0.cpp
+
+**Cause:** Windows memory protection constants used without platform guards.
+
+**Fix:** Add to each affected file after includes:
+```cpp
+#ifndef _WIN32
+#define PAGE_READONLY  0x02
+#define PAGE_READWRITE 0x04
+#endif
+```
+
+**PR Candidate:** Should use cross-platform abstraction.
+
+### VirtualProtectMemoryRegion not implemented for Linux
+
+**Symptom:** Linker errors about `MemArena::VirtualProtectMemoryRegion`
+
+**Cause:** Function declared in header but only implemented in `MemArenaWin.cpp`.
+
+**Fix:** Add to `Source/Core/Common/MemArenaUnix.cpp`:
+```cpp
+bool MemArena::VirtualProtectMemoryRegion(void* data, size_t size, u32 flag)
+{
+  int prot;
+  if (flag == 0x02)  // PAGE_READONLY
+    prot = PROT_READ;
+  else if (flag == 0x04)  // PAGE_READWRITE
+    prot = PROT_READ | PROT_WRITE;
+  else
+    return false;
+  return mprotect(data, size, prot) == 0;
+}
+```
+
+**PR Candidate:** Missing Linux implementation.
+
+### Incremental rollback sources not in CMakeLists.txt
+
+**Symptom:** `undefined reference to 'IncrementalRB::*'` linker errors
+
+**Cause:** Source files in `Brawlback/include/incremental-rollback/` not added to CMake build.
+
+**Fix:** Add to `Source/Core/Core/CMakeLists.txt` after `Brawlback/include/json.hpp`:
+```cmake
+Brawlback/include/incremental-rollback/incremental_rb.cpp
+Brawlback/include/incremental-rollback/job_system.cpp
+Brawlback/include/incremental-rollback/mem.cpp
+Brawlback/include/incremental-rollback/tiny_arena.cpp
+```
+
+**PR Candidate:** CMake configuration bug.
+
+### AVX intrinsics failing (fastMemcpy)
+
+**Symptom:** `inlining failed in call to 'always_inline' '_mm256_stream_si256': target specific option mismatch`
+
+**Cause:** AVX instructions used without enabling AVX for the function.
+
+**Fix:** Add target attribute to `fastMemcpy` in mem.cpp:
+```cpp
+#ifndef _MSC_VER
+__attribute__((target("avx,avx2")))
+#endif
+void fastMemcpy(void *pvDest, void *pvSrc, size_t nBytes)
+```
+
+**PR Candidate:** Cross-platform compilation issue.
+
+### Qt6 private headers not found
+
+**Symptom:** `fatal error: qpa/qplatformnativeinterface.h: No such file or directory`
+
+**Cause:** Qt6 private headers require explicit CMake component.
+
+**Fix:** In `Source/Core/DolphinQt/CMakeLists.txt`:
+```cmake
+find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Widgets Svg)
+```
+And add `Qt6::GuiPrivate` to target_link_libraries.
+
+**PR Candidate:** Qt6 configuration issue.
+
 ### "NUL character seen" in .d files
 
 Corrupted dependency files from interrupted builds:
@@ -372,4 +457,4 @@ echo "SD card files: brawlback-asm/sd-card/"
 
 ---
 
-*Last updated: January 2, 2026*
+*Last updated: January 3, 2026*
