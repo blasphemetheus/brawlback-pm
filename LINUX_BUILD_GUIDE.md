@@ -252,6 +252,40 @@ cmake .. -DUSE_SYSTEM_FMT=OFF
 
 **PR Candidate:** This is a cross-platform build bug that should be fixed upstream.
 
+### ENetPeer socket access error
+
+**Symptom:** `'ENetPeer' has no member named 'socket'` at line ~898
+
+**Cause:** Linux code incorrectly accesses `this->peer->socket` but `ENetPeer` doesn't have a socket member - it's on `ENetHost`.
+
+**Fix:** Change line 898 from:
+```cpp
+setsockopt(this->peer->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
+```
+to:
+```cpp
+setsockopt(this->server->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
+```
+
+**PR Candidate:** Another cross-platform build bug.
+
+### Ambiguous Clamp() function call
+
+**Symptom:** `error: call of overloaded 'Clamp(u32&, unsigned int, unsigned int)' is ambiguous`
+
+**Cause:** Two `Clamp()` functions exist - one in `util.h` and one in `Brawlback::Clamp` in `BrawlbackUtility.h`.
+
+**Fix:** Edit `Source/Core/Core/Brawlback/include/incremental-rollback/util.h`, line 52, change:
+```cpp
+percentOutOf100 = Clamp(percentOutOf100, 0u, 100u);
+```
+to:
+```cpp
+percentOutOf100 = ::Clamp(percentOutOf100, 0u, 100u);
+```
+
+**PR Candidate:** Name collision issue.
+
 ### "NUL character seen" in .d files
 
 Corrupted dependency files from interrupted builds:
