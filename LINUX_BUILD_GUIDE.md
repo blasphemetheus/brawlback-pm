@@ -242,6 +242,16 @@ pip install -r tools/requirements.txt
 cmake .. -DUSE_SYSTEM_FMT=OFF
 ```
 
+### EXIBrawlback.cpp preprocessor brace mismatch
+
+**Symptom:** Errors like `expected unqualified-id before 'if'` in EXIBrawlback.cpp around line 934
+
+**Cause:** Missing closing brace `}` in Windows `#ifdef` block before `#else` (line ~893).
+
+**Fix:** Edit `Source/Core/Core/HW/EXI/EXIBrawlback.cpp`, add `}` after line 892 (after `qos_success = true;`) to close the Windows `if (QOSCreateHandle...)` block before the `#else`.
+
+**PR Candidate:** This is a cross-platform build bug that should be fixed upstream.
+
 ### "NUL character seen" in .d files
 
 Corrupted dependency files from interrupted builds:
