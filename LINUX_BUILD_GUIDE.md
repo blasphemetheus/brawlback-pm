@@ -41,6 +41,55 @@ sudo apt install build-essential cmake git python3 python3-pip python3-venv \
     libpugixml-dev llvm-dev libffi-dev libedit-dev nodejs npm
 ```
 
+### NixOS
+
+Create a `shell.nix` in your project directory:
+
+```nix
+{ pkgs ? import <nixpkgs> {} }:
+pkgs.mkShell {
+  buildInputs = with pkgs; [
+    # Build tools
+    cmake gcc git pkg-config ninja
+
+    # Qt6
+    qt6.full qt6.qtbase.dev
+
+    # Dolphin dependencies
+    libxkbcommon xorg.libXrandr xorg.libXi xorg.libX11
+    SDL2 libevdev miniupnpc lzo alsa-lib pulseaudio
+    bluez ffmpeg libusb1 pugixml cubeb libspng
+    hidapi sfml zstd lz4 xxHash mbedtls_2 curl
+
+    # LLVM for JIT
+    llvmPackages.llvm
+
+    # Python for brawlback-asm
+    (python3.withPackages (ps: with ps; [ click requests rich ]))
+  ];
+
+  # Use bundled fmt (system fmt v12+ has breaking changes)
+  CMAKE_ARGS = "-DUSE_SYSTEM_FMT=OFF";
+
+  # Wayland workaround - force X11/XCB
+  QT_QPA_PLATFORM = "xcb";
+
+  shellHook = ''
+    echo "Brawlback development shell"
+    echo "Build with: cmake .. -DUSE_SYSTEM_FMT=OFF && cmake --build . -j\$(nproc)"
+  '';
+}
+```
+
+Enter the shell with `nix-shell` before building.
+
+**GC Adapter udev rules** - Add to `/etc/nixos/configuration.nix`:
+```nix
+services.udev.extraRules = ''
+  SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="0337", MODE="0666"
+'';
+```
+
 ---
 
 ## Building brawlback-asm
