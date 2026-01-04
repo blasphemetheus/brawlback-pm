@@ -43,7 +43,7 @@ sudo apt install build-essential cmake git python3 python3-pip python3-venv \
 
 ### NixOS
 
-Create a `shell.nix` in your project directory:
+Create a `shell.nix` in the dolphin repo directory:
 
 ```nix
 { pkgs ? import <nixpkgs> {} }:
@@ -52,20 +52,29 @@ pkgs.mkShell {
     # Build tools
     cmake gcc git pkg-config ninja
 
-    # Qt6
-    qt6.full qt6.qtbase.dev
+    # Qt6 - use individual packages (qt6.full is deprecated)
+    qt6.qtbase
+    qt6.qtsvg
+    qt6.wrapQtAppsHook
 
     # Dolphin dependencies
     libxkbcommon xorg.libXrandr xorg.libXi xorg.libX11
     SDL2 libevdev miniupnpc lzo alsa-lib pulseaudio
     bluez ffmpeg libusb1 pugixml cubeb libspng
-    hidapi sfml zstd lz4 xxHash mbedtls_2 curl
+    hidapi sfml zstd lz4 xxHash mbedtls curl
 
     # LLVM for JIT
     llvmPackages.llvm
 
     # Python for brawlback-asm
     (python3.withPackages (ps: with ps; [ click requests rich ]))
+
+    # SD card tools
+    mtools
+    dosfstools
+
+    # Wine for GCTRealMate
+    wineWowPackages.stable
   ];
 
   # Use bundled fmt (system fmt v12+ has breaking changes)
@@ -76,12 +85,18 @@ pkgs.mkShell {
 
   shellHook = ''
     echo "Brawlback development shell"
-    echo "Build with: cmake .. -DUSE_SYSTEM_FMT=OFF && cmake --build . -j\$(nproc)"
+    echo "Build: mkdir -p build && cd build && cmake .. -DLINUX_LOCAL_DEV=ON -DUSE_SYSTEM_FMT=OFF && cmake --build . -j$(nproc)"
+    echo "Setup: cd build/Binaries && ln -sf ../../Data/Sys Sys"
+    echo "Run:   QT_QPA_PLATFORM=xcb ./build/Binaries/dolphin-emu"
   '';
 }
 ```
 
 Enter the shell with `nix-shell` before building.
+
+**Important NixOS Notes:**
+- Use `mbedtls` (v3), not `mbedtls_2` which is marked insecure. Dolphin uses bundled mbedtls anyway.
+- Use individual Qt6 packages, not `qt6.full` which has been removed from nixpkgs.
 
 **GC Adapter udev rules** - Add to `/etc/nixos/configuration.nix`:
 ```nix
@@ -125,6 +140,30 @@ This downloads:
 - **kuribo-llvm**: Modified LLVM/Clang for PowerPC compilation
 - **elf2rel**: Converts ELF to REL format for Wii
 
+#### NixOS: Running kuribo-llvm
+
+The downloaded kuribo-llvm binaries are dynamically linked against standard FHS paths that don't exist on NixOS. Use `steam-run` to provide an FHS-compatible environment:
+
+```bash
+# Install steam-run (requires unfree packages)
+NIXPKGS_ALLOW_UNFREE=1 nix-shell -p steam-run
+
+# Set TMPDIR to avoid clang temp file errors
+export TMPDIR=/tmp
+
+# Run make through steam-run
+steam-run make
+```
+
+**What doesn't work on NixOS:**
+- Running kuribo-llvm binaries directly (missing /lib64/ld-linux-x86-64.so.2)
+- Using `patchelf` to fix the binaries (complex dependency chain)
+- Using `nix-ld` (doesn't handle all library dependencies)
+
+**What works:**
+- `steam-run` provides a complete FHS environment where the binaries run correctly
+- Setting `TMPDIR=/tmp` prevents clang from failing to create temp files
+
 ### 4. Fix Linux case-sensitivity issues
 
 The codebase was developed on Windows (case-insensitive). Linux requires these symlinks:
@@ -164,6 +203,143 @@ cp lib/Syriinge/sy_core.rel sd-card/vBrawl/pf/module/
 
 ---
 
+## Generating GCT Files with GCTRealMate
+
+GCTRealMate compiles Gecko code text files (.txt with ASM) into binary .GCT files.
+
+### Option 1: Wine (recommended for NixOS)
+
+The Linux binary has the same FHS compatibility issues. Wine works more reliably:
+
+```bash
+# Install wine
+nix-shell -p wineWowPackages.stable
+
+# Download GCTRealMate
+wget https://github.com/Project-Plus-Development-Team/GCTRealMate/releases/latest/download/GCTRealMate.zip
+unzip GCTRealMate.zip
+```
+
+#### Fixing .include directive issues
+
+GCTRealMate on Wine cannot find files referenced by `.include` directives. Solution: merge all includes into a single file before compiling.
+
+Create `merge_includes.py`:
+
+```python
+#!/usr/bin/env python3
+import os
+import re
+import sys
+
+def resolve_includes(filename, base_dir, seen=None):
+    if seen is None:
+        seen = set()
+    if filename in seen:
+        return ""
+    seen.add(filename)
+
+    filepath = os.path.join(base_dir, filename)
+    if not os.path.exists(filepath):
+        print(f"Warning: Could not find {filepath}", file=sys.stderr)
+        return ""
+
+    result = []
+    with open(filepath, "r") as f:
+        for line in f:
+            match = re.match(r"\.include\s+(.+)", line.strip())
+            if match:
+                included = match.group(1).strip()
+                result.append(resolve_includes(included, base_dir, seen))
+            else:
+                result.append(line)
+    return "".join(result)
+
+if __name__ == "__main__":
+    input_file = sys.argv[1]
+    base_dir = os.path.dirname(input_file) or "."
+    print(resolve_includes(os.path.basename(input_file), base_dir))
+```
+
+Generate merged files and compile:
+
+```bash
+cd brawlback-asm/sd-card/vBrawl
+
+# Merge includes
+python3 merge_includes.py BRAWLBACK-ONLINE.txt > BRAWLBACK-ONLINE-merged.txt
+python3 merge_includes.py BRAWLBACK-ONLINE-DEV.txt > BRAWLBACK-ONLINE-DEV-merged.txt
+
+# Compile with wine
+wine /path/to/GCTRealMate.exe -o BRAWLBACK-ONLINE.GCT BRAWLBACK-ONLINE-merged.txt
+wine /path/to/GCTRealMate.exe -o BRAWLBACK-ONLINE-DEV.GCT BRAWLBACK-ONLINE-DEV-merged.txt
+```
+
+### Option 2: Linux binary with steam-run
+
+```bash
+# Download Linux binary
+wget https://github.com/Project-Plus-Development-Team/GCTRealMate/releases/latest/download/GCTRealMateLinux.zip
+unzip GCTRealMateLinux.zip
+chmod +x GCTRealMateLinux
+
+# Run through steam-run (NixOS)
+NIXPKGS_ALLOW_UNFREE=1 nix-shell -p steam-run --run "steam-run ./GCTRealMateLinux -o output.GCT input.txt"
+```
+
+**Note:** The Linux binary may still have issues finding .include files. Use the merge script above if needed.
+
+---
+
+## Setting Up Virtual SD Card
+
+Dolphin can use a raw FAT32 image as a virtual SD card.
+
+### Create the SD card image
+
+```bash
+# Create 128MB image
+dd if=/dev/zero of=sd-brawlback.raw bs=1M count=128
+
+# Format as FAT32
+mkfs.vfat -F 32 sd-brawlback.raw
+
+# Copy files using mtools (no root required)
+mmd -i sd-brawlback.raw ::/vBrawl
+mmd -i sd-brawlback.raw ::/vBrawl/pf
+mmd -i sd-brawlback.raw ::/vBrawl/pf/module
+mmd -i sd-brawlback.raw ::/vBrawl/pf/plugins
+
+mcopy -i sd-brawlback.raw gc.txt ::/vBrawl/
+mcopy -i sd-brawlback.raw BRAWLBACK-ONLINE.GCT ::/vBrawl/
+mcopy -i sd-brawlback.raw sy_core.rel ::/vBrawl/pf/module/
+mcopy -i sd-brawlback.raw Brawlback-Online.rel ::/vBrawl/pf/plugins/
+```
+
+### Configure Dolphin
+
+Edit `~/.config/dolphin-emu/Dolphin.ini`:
+
+```ini
+[Core]
+WiiSDCard = True
+WiiSDCardWritable = True
+WiiSDCardPath = /path/to/sd-brawlback.raw
+
+[Interface]
+UsePanicHandlers = False
+```
+
+### Verify SD card contents
+
+```bash
+mdir -i sd-brawlback.raw ::/vBrawl
+mdir -i sd-brawlback.raw ::/vBrawl/pf/module
+mdir -i sd-brawlback.raw ::/vBrawl/pf/plugins
+```
+
+---
+
 ## Building Dolphin
 
 The modified Dolphin emulator with Brawlback netplay support.
@@ -183,10 +359,13 @@ mkdir build && cd build
 
 # IMPORTANT: Use bundled fmt library to avoid version mismatch
 # System fmt v12+ has breaking API changes (is_compile_string removed)
-cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DUSE_SYSTEM_FMT=OFF
+#
+# LINUX_LOCAL_DEV=ON: Makes Dolphin look for Sys/ directory next to the binary
+# (required for development builds - otherwise it looks in /usr/local/share/dolphin-emu/)
+cmake .. -DLINUX_LOCAL_DEV=ON -DUSE_SYSTEM_FMT=OFF
 
-# Optional: specify install prefix
-cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DUSE_SYSTEM_FMT=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
+# Optional: specify install prefix (for system-wide installation)
+cmake .. -DUSE_SYSTEM_FMT=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
 ```
 
 ### 3. Build
@@ -198,15 +377,44 @@ cmake --build . -j$(nproc)
 
 **Build time:** 10-30 minutes depending on CPU
 
-### 4. Install (optional)
+### 4. Setup Sys Directory (for development builds)
+
+If you used `-DLINUX_LOCAL_DEV=ON`, Dolphin looks for `Sys/` next to the binary:
 
 ```bash
-sudo cmake --install .
+cd build/Binaries
+ln -sf ../../Data/Sys Sys
 ```
 
-Or run directly from build directory:
+### 5. Run
+
 ```bash
-./Binaries/dolphin-emu
+# From the dolphin repo root directory:
+cd /path/to/repos/dolphin
+
+# On Wayland, force X11 backend
+QT_QPA_PLATFORM=xcb ./build/Binaries/dolphin-emu
+
+# On X11, run directly
+./build/Binaries/dolphin-emu
+
+# With a game (e.g., Brawl ISO):
+QT_QPA_PLATFORM=xcb ./build/Binaries/dolphin-emu -e /path/to/SSBB_NTSC.iso
+```
+
+**NixOS:** Run from inside nix-shell:
+```bash
+cd /path/to/repos/dolphin
+nix-shell shell.nix --run 'QT_QPA_PLATFORM=xcb ./build/Binaries/dolphin-emu -e /path/to/SSBB_NTSC.iso'
+```
+
+### 6. Install (optional)
+
+For system-wide installation (don't use LINUX_LOCAL_DEV):
+```bash
+cmake .. -DUSE_SYSTEM_FMT=OFF  # reconfigure without LINUX_LOCAL_DEV
+cmake --build . -j$(nproc)
+sudo cmake --install .
 ```
 
 ---
@@ -453,6 +661,8 @@ sudo apt install llvm-dev
 
 ## Quick Start Script
 
+### Standard Linux (Arch, Debian, etc.)
+
 Save as `build-brawlback.sh`:
 
 ```bash
@@ -485,13 +695,144 @@ echo "=== Building Dolphin ==="
 cd dolphin
 git submodule update --init --recursive
 mkdir -p build && cd build
-cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DUSE_SYSTEM_FMT=OFF
+cmake .. -DLINUX_LOCAL_DEV=ON -DUSE_SYSTEM_FMT=OFF
 cmake --build . -j$(nproc)
+
+# Link Sys directory for development build
+cd Binaries && ln -sf ../../Data/Sys Sys && cd ../..
 cd ../..
 
 echo "=== Build Complete ==="
 echo "Dolphin binary: dolphin/build/Binaries/dolphin-emu"
 echo "SD card files: brawlback-asm/sd-card/"
+echo ""
+echo "Run from dolphin directory:"
+echo "  cd $REPOS_DIR/dolphin"
+echo "  QT_QPA_PLATFORM=xcb ./build/Binaries/dolphin-emu -e /path/to/SSBB_NTSC.iso"
+```
+
+### NixOS Complete Workflow
+
+For NixOS, use this script (requires `nix-shell` and `steam-run`):
+
+```bash
+#!/bin/bash
+set -e
+
+REPOS_DIR="${1:-./repos}"
+ISO_PATH="$2"  # Path to your Brawl ISO (RSBE01)
+
+if [ -z "$ISO_PATH" ]; then
+    echo "Usage: $0 [repos_dir] <path_to_brawl_iso>"
+    exit 1
+fi
+
+mkdir -p "$REPOS_DIR"
+cd "$REPOS_DIR"
+
+# ====== Build Dolphin ======
+echo "=== Building Dolphin ==="
+cd dolphin
+git submodule update --init --recursive
+
+# Enter nix-shell and build
+nix-shell shell.nix --run "mkdir -p build && cd build && cmake .. -DLINUX_LOCAL_DEV=ON -DUSE_SYSTEM_FMT=OFF && cmake --build . -j\$(nproc)"
+
+# Setup Sys directory symlink
+cd build/Binaries && ln -sf ../../Data/Sys Sys && cd ../../..
+
+# ====== Build brawlback-asm ======
+echo "=== Building brawlback-asm ==="
+cd brawlback-asm
+git submodule update --init --recursive
+
+# Download toolchain
+nix-shell -p python3Packages.click python3Packages.requests python3Packages.rich --run "python3 ./bbk.py setup"
+
+# Apply Linux case fixes
+cd Brawlback-Online/include && ln -sf EXI_hooks.h EXI_Hooks.h && cd ../..
+cd lib/BrawlHeaders/OpenRVL/include/revolution && ln -sf FA fa && cd FA && ln -sf FARemove.h FAremove.h && cd ../../../../../..
+
+# Build with steam-run (handles dynamic linking on NixOS)
+NIXPKGS_ALLOW_UNFREE=1 nix-shell -p steam-run --run "export TMPDIR=/tmp && steam-run make"
+
+# ====== Generate GCT files ======
+echo "=== Generating GCT files ==="
+cd sd-card/vBrawl
+
+# Create include merger script
+cat > /tmp/merge_includes.py << 'PYEOF'
+#!/usr/bin/env python3
+import os, re, sys
+def resolve(f, d, s=None):
+    s = s or set()
+    if f in s: return ""
+    s.add(f)
+    p = os.path.join(d, f)
+    if not os.path.exists(p): return ""
+    r = []
+    for l in open(p):
+        m = re.match(r"\.include\s+(.+)", l.strip())
+        r.append(resolve(m.group(1).strip(), d, s) if m else l)
+    return "".join(r)
+print(resolve(os.path.basename(sys.argv[1]), os.path.dirname(sys.argv[1]) or "."))
+PYEOF
+
+python3 /tmp/merge_includes.py BRAWLBACK-ONLINE.txt > BRAWLBACK-ONLINE-merged.txt
+python3 /tmp/merge_includes.py BRAWLBACK-ONLINE-DEV.txt > BRAWLBACK-ONLINE-DEV-merged.txt
+
+# Download GCTRealMate if not present
+if [ ! -f GCTRealMate.exe ]; then
+    wget -q https://github.com/Project-Plus-Development-Team/GCTRealMate/releases/latest/download/GCTRealMate.zip
+    unzip -o GCTRealMate.zip
+fi
+
+# Compile with wine
+nix-shell -p wineWowPackages.stable --run "wine GCTRealMate.exe -o BRAWLBACK-ONLINE.GCT BRAWLBACK-ONLINE-merged.txt"
+nix-shell -p wineWowPackages.stable --run "wine GCTRealMate.exe -o BRAWLBACK-ONLINE-DEV.GCT BRAWLBACK-ONLINE-DEV-merged.txt"
+
+cd ../..
+
+# ====== Create SD card image ======
+echo "=== Creating SD card ==="
+SD_PATH="$HOME/.local/share/dolphin-emu/Wii/sd-brawlback.raw"
+mkdir -p "$(dirname "$SD_PATH")"
+
+nix-shell -p mtools dosfstools --run "
+dd if=/dev/zero of='$SD_PATH' bs=1M count=128 2>/dev/null
+mkfs.vfat -F 32 '$SD_PATH'
+mmd -i '$SD_PATH' ::/vBrawl ::/vBrawl/pf ::/vBrawl/pf/module ::/vBrawl/pf/plugins
+mcopy -i '$SD_PATH' sd-card/vBrawl/gc.txt ::/vBrawl/
+mcopy -i '$SD_PATH' sd-card/vBrawl/BRAWLBACK-ONLINE.GCT ::/vBrawl/
+mcopy -i '$SD_PATH' lib/Syriinge/sy_core.rel ::/vBrawl/pf/module/
+mcopy -i '$SD_PATH' Brawlback-Online/Brawlback-Online.rel ::/vBrawl/pf/plugins/
+"
+
+# ====== Configure Dolphin ======
+echo "=== Configuring Dolphin ==="
+mkdir -p ~/.config/dolphin-emu
+cat >> ~/.config/dolphin-emu/Dolphin.ini << EOF
+[Core]
+WiiSDCard = True
+WiiSDCardWritable = True
+WiiSDCardPath = $SD_PATH
+[Interface]
+UsePanicHandlers = False
+EOF
+
+# ====== Create launcher script ======
+echo "=== Creating launcher ==="
+cat > "$REPOS_DIR/run-brawlback.sh" << EOF
+#!/bin/bash
+cd "$REPOS_DIR/dolphin"
+nix-shell shell.nix --run "QT_QPA_PLATFORM=xcb ./build/Binaries/dolphin-emu -e '$ISO_PATH'"
+EOF
+chmod +x "$REPOS_DIR/run-brawlback.sh"
+
+cd "$REPOS_DIR"
+echo ""
+echo "=== Build Complete ==="
+echo "Run: ./run-brawlback.sh"
 ```
 
 ---
@@ -506,4 +847,4 @@ echo "SD card files: brawlback-asm/sd-card/"
 
 ---
 
-*Last updated: January 3, 2026*
+*Last updated: January 4, 2026*
