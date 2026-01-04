@@ -3,15 +3,16 @@
 ## Current Goals
 
 ### G1: Understand the Project and Demo Current State
-**Status:** In Progress
+**Status:** Mostly Complete (Linux)
 **Priority:** High
 
-- [ ] Read and understand the architecture documentation
-- [ ] Set up the development environment (originally Windows-based)
-- [ ] Build the brawlback-asm module
-- [ ] Build the custom Dolphin fork
-- [ ] Successfully run the launcher and connect to a test match
-- [ ] Document any issues encountered during setup
+- [x] Read and understand the architecture documentation
+- [x] Set up the development environment - **DONE on Linux**
+- [x] Build the brawlback-asm module - **DONE** (with case-sensitivity fixes)
+- [x] Build the custom Dolphin fork - **DONE** (8 Linux fixes applied)
+- [x] Successfully boot Brawlback - **DONE** (boots to CSS)
+- [ ] Connect to a test match - **BLOCKED** (matchmaking server offline)
+- [x] Document any issues encountered during setup - **DONE** (see BRAWLBACK-STATUS.md)
 
 ### G2: Fix the Savestate System (Critical Blocker)
 **Status:** Not Started
@@ -47,12 +48,16 @@ Known issues:
 - Need to determine maximum replay count
 
 ### G5: Cross-Platform Support
-**Status:** Unknown
+**Status:** Linux Working (PR #62 submitted)
 **Priority:** Medium
 
-- [ ] Test on Linux
+- [x] Test on Linux - **DONE** (Manjaro, 8 fixes applied)
+- [x] Build on Linux - **DONE** (boots to CSS)
+- [x] Document platform-specific build requirements - **DONE** (see LINUX_BUILD_GUIDE.md)
+- [x] Submit PR upstream - **PR #62** https://github.com/Brawlback-Team/dolphin/pull/62
+- [ ] Test netplay on Linux - **BLOCKED** (matchmaking server offline)
 - [ ] Test on macOS
-- [ ] Document platform-specific build requirements
+- [ ] Test on NixOS (planned)
 
 ### G6: Project+ Compatibility
 **Status:** Partial

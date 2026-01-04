@@ -118,10 +118,13 @@ Currently disabled because it conflicts with rollback. Would require:
 
 ### 13. Linux Build Improvements
 **Difficulty:** Medium
+**Status:** ✅ DONE (PR #62 submitted)
 
-- Test and document Linux build process
-- Ensure launcher works on Linux
-- Package as AppImage or Flatpak
+- [x] Test and document Linux build process - **DONE** (LINUX_BUILD_GUIDE.md)
+- [x] Fix 8 build/runtime issues - **DONE** (see PR-DESCRIPTION.md)
+- [x] Submit fixes upstream - **PR #62** https://github.com/Brawlback-Team/dolphin/pull/62
+- [ ] Ensure launcher works on Linux - Not tested yet
+- [ ] Package as AppImage or Flatpak
 
 ### 14. macOS Support
 **Difficulty:** Medium-High

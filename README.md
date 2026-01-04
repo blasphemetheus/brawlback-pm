@@ -1,63 +1,95 @@
-# Brawlback Development Notes
+# Brawlback Linux Port
 
-Personal documentation and notes for contributing to the [Brawlback](https://github.com/Brawlback-Team) rollback netcode project for Super Smash Bros. Brawl.
+Linux compatibility fixes for [Brawlback](https://github.com/Brawlback-Team) - rollback netcode for Super Smash Bros. Brawl.
 
-## Contents
+## Status: PR Submitted
 
-- **[GOALS.md](GOALS.md)** - Project goals and progress tracking
-- **[IMPROVEMENTS.md](IMPROVEMENTS.md)** - Prioritized list of improvements
-- **[KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md)** - Architecture docs, resources, and references
-- **[LINUX_BUILD_GUIDE.md](LINUX_BUILD_GUIDE.md)** - Building Brawlback on Linux
+**PR #62:** https://github.com/Brawlback-Team/dolphin/pull/62
+
+| Component | Status |
+|-----------|--------|
+| Dolphin Build | ✅ Works (8 fixes applied) |
+| Brawlback Boot | ✅ Works (boots to CSS) |
+| Netplay Testing | ⏳ Blocked (matchmaking server offline) |
+| P+ Integration | ❌ Not yet (see docs) |
+
+## Quick Start
+
+```bash
+# Clone Dolphin with Linux fixes
+git clone https://github.com/blasphemetheus/dolphin.git
+cd dolphin && git checkout linux-fixes
+git submodule update --init --recursive
+
+# Build
+mkdir build && cd build
+cmake .. -DUSE_SYSTEM_FMT=OFF
+cmake --build . -j$(nproc)
+
+# Run (force X11 on Wayland)
+QT_QPA_PLATFORM=xcb ./Binaries/dolphin-emu -e /path/to/BRAWLBACK-ONLINE.elf
+```
+
+## Documentation
+
+| File | Description |
+|------|-------------|
+| **[BRAWLBACK-STATUS.md](BRAWLBACK-STATUS.md)** | Main status doc - what works, what doesn't, SD card setup, P+ vs vBrawl |
+| **[LINUX_BUILD_GUIDE.md](LINUX_BUILD_GUIDE.md)** | Build instructions for Arch, Debian, NixOS |
+| **[PR-DESCRIPTION.md](PR-DESCRIPTION.md)** | Detailed analysis of all 8 commits in PR #62 |
+| **[KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md)** | Architecture docs and references |
+
+## Key Info
+
+| Item | Value |
+|------|-------|
+| Fork | https://github.com/blasphemetheus/dolphin (`linux-fixes` branch) |
+| Matchmaking | lylat.gg:43113 (currently offline) |
+| Get lylat.json | https://slippi.gg/online/enable (download user.json, rename) |
+| Brawl ISO | RSBE01 (NTSC-U) |
+
+## What's Fixed
+
+1. **Wiimote crash** - Bounds check for empty controller vector
+2. **Memory protection** - Linux `mprotect()` wrapper for `VirtualProtect()`
+3. **IncrementalRB crash** - Lazy initialization pattern
+4. **CMake builds** - Missing sources, Qt6::GuiPrivate, minizip-ng
+5. **Cross-platform** - PRIu64 format, errno handling, AVX attributes
+
+See [PR-DESCRIPTION.md](PR-DESCRIPTION.md) for full details on each fix.
 
 ## Repository Structure
 
 ```
 brawlback/
-├── GOALS.md              # Project goals tracker
-├── IMPROVEMENTS.md       # Improvements roadmap
-├── KNOWLEDGE_BASE.md     # Technical documentation
-├── LINUX_BUILD_GUIDE.md  # Linux build instructions
-└── repos/                # Cloned Brawlback repositories (gitignored)
-    ├── brawlback-asm/
-    ├── brawlback-common/
-    ├── brawlback-launcher/
-    ├── brawlback-wiki/
-    ├── dolphin/
-    ├── Project-Plus-Dolphin/
-    └── vBrawlLauncherReleases/
+├── BRAWLBACK-STATUS.md      # Main status & progress tracker
+├── LINUX_BUILD_GUIDE.md     # Build instructions (Arch/Debian/NixOS)
+├── PR-DESCRIPTION.md        # PR #62 detailed analysis
+├── KNOWLEDGE_BASE.md        # Architecture & references
+├── GOALS.md                 # Project goals
+├── IMPROVEMENTS.md          # Improvements roadmap
+├── launch-brawlback.sh      # Helper script
+└── repos/                   # Cloned repos (gitignored)
+    ├── brawlback-asm/       # Game-side injection code
+    ├── dolphin/             # Modified Dolphin emulator
+    └── brawlback-launcher/  # Electron launcher
 ```
 
-## Quick Start
+## SD Card Setup
 
-```bash
-# Clone this repo
-git clone https://github.com/YOUR_USERNAME/brawlback-notes.git
-cd brawlback-notes
+**For Brawlback (vBrawl):** Use minimal SD with only `/vBrawl/` folder.
 
-# Clone Brawlback repos
-mkdir repos && cd repos
-git clone --recursive https://github.com/Brawlback-Team/brawlback-asm.git
-git clone --recursive https://github.com/Brawlback-Team/dolphin.git
-git clone https://github.com/Brawlback-Team/brawlback-launcher.git
-# ... etc
+**Do NOT use:** AllStars or P+ files - incompatible folder structure.
 
-# See LINUX_BUILD_GUIDE.md for full build instructions
-```
+See [BRAWLBACK-STATUS.md](BRAWLBACK-STATUS.md#sd-card-setup-important---read-this-first) for full details.
 
-## Current Status
+## Next Steps
 
-- **brawlback-asm**: Builds on Linux with case-sensitivity fixes
-- **dolphin**: Builds with bundled fmt (system fmt v12+ incompatible)
-- **launcher**: Node.js/Electron app (yarn install && yarn start)
-
-## Key Issues
-
-1. **Savestate system broken** - Main release blocker, causes desync
-2. **Case sensitivity** - Windows-developed code needs fixes for Linux
-3. **fmt library** - Needs bundled version, not system fmt v12+
-
-See [IMPROVEMENTS.md](IMPROVEMENTS.md) for full details.
+1. Wait for PR #62 review
+2. Monitor matchmaking server (lylat.gg:43113)
+3. Test netplay when server is online
+4. Verify rollback works during gameplay
 
 ---
 
-*This is a personal fork for development notes. Official Brawlback: https://github.com/Brawlback-Team*
+*Personal fork for Linux porting. Official Brawlback: https://github.com/Brawlback-Team*
