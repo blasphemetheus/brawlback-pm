@@ -9,6 +9,7 @@
 | **Build Guide** | See `LINUX_BUILD_GUIDE.md` |
 | **Matchmaking** | lylat.gg:43113 (currently offline) |
 | **Brawl ISO** | RSBE01 (NTSC-U) |
+| **Get lylat.json** | https://slippi.gg/online/enable → download user.json → rename to lylat.json |
 
 ### Quick Build (with my fixes)
 ```bash
@@ -490,6 +491,12 @@ getfacl /dev/bus/usb/003/XXX  # replace XXX with device number
 
 ### 12. Two-Instance Local Testing Setup
 For testing netplay locally, two Dolphin instances with different accounts are needed.
+
+**Getting Account Credentials:**
+1. Go to https://slippi.gg/online/enable
+2. Log in with your Slippi account (or create one)
+3. Download the `user.json` file
+4. Rename to `lylat.json` and place in Dolphin's data directory
 
 **Account 1:** DBTD#411 (tv/spikenarding)
 - Credentials: `~/.local/share/dolphin-emu/lylat.json`
