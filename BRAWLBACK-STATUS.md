@@ -29,6 +29,93 @@ Porting Brawlback (Super Smash Bros. Brawl rollback netcode) to Linux using the 
 
 ---
 
+## SD Card Setup (IMPORTANT - Read This First)
+
+There are multiple SD card configurations we tried. **Only one works for Brawlback.**
+
+### ✅ WORKING: Minimal SD Card for Brawlback (vBrawl)
+
+This is what you want for Brawlback with rollback netcode on vanilla Brawl.
+
+**Location:** `~/.local/share/dolphin-emu/Wii/sd-minimal.raw`
+
+**Contents (ONLY these files):**
+```
+/vBrawl/
+├── gc.txt                      # Gecko code loader config
+├── BRAWLBACK-ONLINE.GCT        # Gecko codes for online play
+├── BRAWLBACK-ONLINE-DEV.GCT    # Dev version (more logging)
+└── pf/
+    ├── module/
+    │   └── sy_core.rel         # Syringe loader (~8KB)
+    └── plugins/
+        └── Brawlback-Online.rel # Brawlback plugin (~34KB)
+```
+
+**Source:** Copy from `brawlback-asm/sd-card/vBrawl/` after building brawlback-asm
+
+**Create minimal SD card:**
+```bash
+dd if=/dev/zero of=sd-minimal.raw bs=1M count=512
+mkfs.fat -F 32 sd-minimal.raw
+mmd -i sd-minimal.raw ::/vBrawl
+mmd -i sd-minimal.raw ::/vBrawl/pf
+mmd -i sd-minimal.raw ::/vBrawl/pf/module
+mmd -i sd-minimal.raw ::/vBrawl/pf/plugins
+mcopy -i sd-minimal.raw /path/to/brawlback-asm/sd-card/vBrawl/* ::/vBrawl/
+```
+
+**Dolphin.ini setting:**
+```ini
+WiiSDCardPath = /home/YOUR_USER/.local/share/dolphin-emu/Wii/sd-minimal.raw
+```
+
+---
+
+### ❌ DO NOT USE: AllStars / Project+ All-Stars
+
+**Why:** AllStars uses a different folder structure (`Project+/` or `AllStar+/`) that is incompatible with both standard P+ and Brawlback.
+
+**Symptoms if used:**
+- Crashes with "Invalid read from 0xe6b43ed4"
+- Extra plugins (lavaNeutralSpawns.rel, Physics.rel) cause conflicts
+- Wrong folder paths in Gecko codes
+
+**If you downloaded Project-Plus-All-Stars-1.0.0:** Don't use it for Brawlback testing.
+
+---
+
+### ⚠️ NOT WORKING: P+ with Brawlback
+
+Combining Project+ gameplay with Brawlback rollback netcode does NOT work out of the box.
+
+**Why it doesn't work:**
+| Aspect | P+ | Brawlback |
+|--------|-----|-----------|
+| GCT size | ~98KB | ~8KB |
+| Folder path | `/Project+/pf/` or `/projectm/` | `/vBrawl/pf/` |
+| Code purpose | File loading + gameplay mods | Rollback netcode |
+| Path location | Hardcoded in GCT | Hardcoded in FilePatchCode.asm |
+
+**What would be needed:**
+1. Merge P+ file loader codes with Brawlback rollback codes into one GCT
+2. Or modify Brawlback to load from P+ paths
+3. Complex integration work - not attempted
+
+---
+
+### 📋 P+ Dolphin (Separate from Brawlback)
+
+If you just want to play P+ (without Brawlback rollback), use P+ Dolphin:
+
+**P+ Dolphin config:** `~/.config/project-plus-dolphin/`
+**P+ SD card:** `~/.local/share/project-plus-dolphin/Wii/sd.raw`
+**Expected folder:** `/projectm/` (NOT `/Project+/`)
+
+This is a completely separate setup from Brawlback Dolphin.
+
+---
+
 ## Problems Encountered & Fixes Applied
 
 ### 1. Wiimote Controller Crash (FIXED)
