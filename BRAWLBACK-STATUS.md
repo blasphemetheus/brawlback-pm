@@ -85,22 +85,112 @@ WiiSDCardPath = /home/YOUR_USER/.local/share/dolphin-emu/Wii/sd-minimal.raw
 
 ---
 
-### ⚠️ NOT WORKING: P+ with Brawlback
+### ⚠️ NOT YET WORKING: P+ with Brawlback (The Goal)
 
-Combining Project+ gameplay with Brawlback rollback netcode does NOT work out of the box.
+**The ultimate goal:** Play Project+ with Brawlback's rollback netcode.
 
-**Why it doesn't work:**
-| Aspect | P+ | Brawlback |
-|--------|-----|-----------|
-| GCT size | ~98KB | ~8KB |
-| Folder path | `/Project+/pf/` or `/projectm/` | `/vBrawl/pf/` |
-| Code purpose | File loading + gameplay mods | Rollback netcode |
-| Path location | Hardcoded in GCT | Hardcoded in FilePatchCode.asm |
+**Current reality:** Brawlback only works with vBrawl (vanilla Brawl). P+ integration requires additional work.
 
-**What would be needed:**
-1. Merge P+ file loader codes with Brawlback rollback codes into one GCT
-2. Or modify Brawlback to load from P+ paths
-3. Complex integration work - not attempted
+---
+
+#### Understanding the Architecture
+
+**vBrawl (What Works Now)**
+- Vanilla Super Smash Bros. Brawl gameplay
+- Brawlback adds: rollback netcode, savestates, input prediction
+- Simple setup: just Brawlback's GCT + plugin files
+- Folder: `/vBrawl/`
+
+**P+ (What We Want)**
+- Modified gameplay: balance changes, new mechanics, cosmetics
+- Requires: file replacement system to load mod files
+- Has its own Gecko codes (~98KB) for file loading
+- Folder: `/projectm/` (standard) or `/Project+/` (some versions)
+
+**The Conflict**
+| Component | vBrawl/Brawlback | P+ |
+|-----------|------------------|-----|
+| Gecko codes | ~8KB (netcode only) | ~98KB (file loading + gameplay) |
+| File path | `/vBrawl/pf/` | `/projectm/pf/` or `/Project+/pf/` |
+| Code loader | Syringe → Brawlback-Online.rel | Syringe → P+ codes |
+| Netcode | Rollback (Brawlback) | Delay-based (P+ Dolphin) |
+
+Both systems use Syringe to load REL plugins, but they load **different** Gecko codes that expect **different** folder structures.
+
+---
+
+#### Potential Solutions (Not Yet Implemented)
+
+**Option 1: Merge GCT Codes**
+- Take P+'s file loading codes + Brawlback's rollback codes
+- Combine into single GCT
+- Change path references to match
+- **Difficulty:** High - requires understanding both codebases' ASM
+
+**Option 2: Modify Brawlback's FilePatchCode.asm**
+- Change hardcoded `/vBrawl/` path to `/projectm/`
+- Rebuild brawlback-asm
+- Use P+ files in the expected location
+- **Difficulty:** Medium - just path changes, but need to verify compatibility
+
+**Option 3: Dual-Load Approach**
+- Load P+ file system first
+- Then load Brawlback netcode on top
+- May have conflicts with how both hook game functions
+- **Difficulty:** Unknown - may have fundamental conflicts
+
+**Option 4: Wait for Official P+ Brawlback**
+- Brawlback team may release P+ support
+- Would be the cleanest solution
+- **Status:** Unknown if planned
+
+---
+
+#### What We Know From Investigation
+
+1. **Path is hardcoded** in `brawlback-asm/Brawlback-Online/FilePatchCode.asm`:
+   ```asm
+   # Somewhere around line with folder path
+   # References /vBrawl/ for file loading
+   ```
+
+2. **GCT conditional check** at boot:
+   ```
+   225664EC 00000000  # Only run if SD mounted flag is set
+   ```
+   This check in Brawlback's GCT gates the file patching codes.
+
+3. **Syringe hook location** (0x800ccec4) - Brawlback replaces a WiFi function with `ReturnImmediately`. P+ may hook similar locations.
+
+4. **The "Invalid read" errors** we see are from Brawl's WiFi code trying to access structures that Brawlback intentionally bypasses. P+ would have the same issue if it doesn't also bypass these.
+
+---
+
+#### Recommended Investigation Path
+
+If you want to pursue P+ + Brawlback integration:
+
+1. **Compare hooks**
+   ```bash
+   # In brawlback-asm
+   grep -r "syReplaceFunc\|syHook" Brawlback-Online/
+
+   # Find what addresses Brawlback hooks
+   # Compare with P+ hook locations
+   ```
+
+2. **Try path swap**
+   ```bash
+   # Edit FilePatchCode.asm
+   # Change /vBrawl/ to /projectm/
+   # Rebuild: make clean && make
+   # Test with P+ files in /projectm/
+   ```
+
+3. **Check for conflicts**
+   - Both may hook the same game functions
+   - Memory regions may overlap
+   - Save state handling may conflict with P+ dynamic loading
 
 ---
 
